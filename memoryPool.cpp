@@ -103,28 +103,40 @@ namespace memoryPool {
         return memoryPool[index];
     }
 
+    //实现无锁入队
     bool MemoryPool::pushFreeList(Slot *slot) {
+        //循环确保线程在CAS不成功的情况下，可以一直重试
         while (true) {
+            //读取当前头指针，存入oldHead
             Slot* oldHead = freeList_.load(std::memory_order_relaxed);
+            //将slot插入到头指针前
             slot->next.store(oldHead, std::memory_order_relaxed);
-
+            //CAS操作：如果freeList_依然指向oldHead，则将其更新为slot
             if (freeList_.compare_exchange_weak(oldHead, slot,
-                                            std::memory_order_release,
+                                            //memory_order_release 确保在 slot->next 赋值完成后，头指针的更新才对其他线程可见
+                                            //若成功，返回 true
+                                            std::memory_order_release, 
+                                            //若失败（说明有其他线程竞争），自动更新oldHead为最新值并返回false
                                             std::memory_order_relaxed)) {
                 return true;
             }
         }
     }
 
+    //实现无锁出队
     Slot *MemoryPool::popFreeList() {
+        //循环确保线程在CAS不成功的情况下，可以一直重试
         while (true) {
+            //读取头指针
             Slot* oldHead = freeList_.load(std::memory_order_relaxed);
+            //空指针检查
             if (oldHead == nullptr) {
                 return nullptr;
             }
 
+            //读取下一个指针，备用作为接下来的头指针
             Slot* newHead = oldHead->next.load(std::memory_order_relaxed);
-
+            
             if (freeList_.compare_exchange_weak(oldHead, newHead,
                                             std::memory_order_acquire,
                                             std::memory_order_relaxed)) {
