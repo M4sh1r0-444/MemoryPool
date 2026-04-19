@@ -3,9 +3,9 @@
 #include <atomic>
 
 namespace memoryPool {
-#define MEMORY_POOL_NUM 64                                              //内存池数量
-#define SLOT_BASE_SIZE 8                                          //每个内存槽最小大小
-#define MAX_SLOT_SIZE 512                                            //内存槽最大大小
+#define MEMORY_POOL_NUM 64                                                   //内存池数量
+#define SLOT_BASE_SIZE 8                                             //每个内存槽最小大小
+#define MAX_SLOT_SIZE 512                                                //内存槽最大大小
 
     //内存槽结构
     struct Slot {
@@ -16,33 +16,33 @@ namespace memoryPool {
     //内存池类
     class MemoryPool {
     public:
-        MemoryPool(size_t BlockSize = 4096);                  //整个内存池的大小为4096
+        MemoryPool(size_t BlockSize = 4096);                      //整个内存池的大小为4096
         ~MemoryPool();
 
-        void init(size_t);                                              //初始化大小
-        void* allocate();                                                 //分配内存
-        void deallocate(void*);                                           //回收内存
+        void init(size_t);                                                     //初始化大小
+        void* allocate();                                                        //分配内存
+        void deallocate(void*);                                                  //回收内存
 
     private:
-        void allocateNewBlock();                                     //申请一块新空间
-        size_t padPointer(char* p,size_t align);                          //对齐内存
+        void allocateNewBlock();                                           //申请一块新空间
+        size_t padPointer(char* p,size_t align);                                 //对齐内存
 
         ///使用CAS操作进行无锁入队和出队
-        bool pushFreeList(Slot* slot);                                       ///入队
-        Slot* popFreeList();                                                 ///出队
+        bool pushFreeList(Slot* slot);                                              ///入队
+        Slot* popFreeList();                                                        ///出队
 
     private:
-        int BlockSize_;                                                  //内存块大小
-        int SlotSize_;                                                      //槽大小
-        Slot* firstBlock_;                                       //指向内存池管理的首个
-        Slot* curSlot_;                                          //指向当前未被使用的槽
+        int BlockSize_;                                                        //内存块大小
+        int SlotSize_;                                                             //槽大小
+        Slot* firstBlock_;                                            //指向内存池管理的首个
+        Slot* curSlot_;                                               //指向当前未被使用的槽
         ///把空闲链表也修改为原子指针
-        std::atomic<Slot*> freeList_;                   //指向空闲槽（被释放后又未被使用）
+        std::atomic<Slot*> freeList_;                       //指向空闲槽（被释放后又未被使用）
         Slot* lastSlot_;             //当前内存块最后未被使用的位置（若超过则需申请新的内存块）
         ///修改后，已经可以实现无锁逻辑，不再需要保护空闲链表的互斥锁
-        ///std::mutex mutexForFreeList_;                         //保护空闲链表的互斥锁
+        ///std::mutex mutexForFreeList_;                               //保护空闲链表的互斥锁
         ///因为空闲链表的入队和出队是常用操作，而内存块的分配较少发生，所以可以保留该互斥锁
-        std::mutex mutexForBlock_;                               //保护内存申请的互斥锁
+        std::mutex mutexForBlock_;                                     //保护内存申请的互斥锁
     };
 
     //哈希桶类（用于存放多个内存池）
