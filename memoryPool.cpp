@@ -136,7 +136,7 @@ namespace memoryPool {
 
             //读取下一个指针，备用作为接下来的头指针
             Slot* newHead = oldHead->next.load(std::memory_order_relaxed);
-            
+            // 尝试将 freeList_ 从 oldHead 更新为 newHead
             if (freeList_.compare_exchange_weak(oldHead, newHead,
                                             std::memory_order_acquire,
                                             std::memory_order_relaxed)) {
