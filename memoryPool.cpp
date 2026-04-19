@@ -102,4 +102,34 @@ namespace memoryPool {
         static MemoryPool memoryPool[MEMORY_POOL_NUM];
         return memoryPool[index];
     }
+
+    bool MemoryPool::pushFreeList(Slot *slot) {
+        while (true) {
+            Slot* oldHead = freeList_.load(std::memory_order_relaxed);
+            slot->next.store(oldHead, std::memory_order_relaxed);
+
+            if (freeList_.compare_exchange_weak(oldHead, slot,
+                                            std::memory_order_release,
+                                            std::memory_order_relaxed)) {
+                return true;
+            }
+        }
+    }
+
+    Slot *MemoryPool::popFreeList() {
+        while (true) {
+            Slot* oldHead = freeList_.load(std::memory_order_relaxed);
+            if (oldHead == nullptr) {
+                return nullptr;
+            }
+
+            Slot* newHead = oldHead->next.load(std::memory_order_relaxed);
+
+            if (freeList_.compare_exchange_weak(oldHead, newHead,
+                                            std::memory_order_acquire,
+                                            std::memory_order_relaxed)) {
+                return oldHead;
+            }
+        }
+    }
 }
