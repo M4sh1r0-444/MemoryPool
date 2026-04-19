@@ -1,5 +1,6 @@
 #include <iostream>
 #include <mutex>
+#include <atomic>
 
 namespace memoryPool {
 #define MEMORY_POOL_NUM 64                                              //内存池数量
@@ -8,7 +9,8 @@ namespace memoryPool {
 
     //内存槽结构
     struct Slot {
-        Slot* next;
+        ///使用 std::atomic 包装指针，确保在多线程并发访问链表时,next指针的读写是原子的，防止数据竞争
+        std::atomic<Slot*> next;
     };
 
     //内存池类
@@ -25,14 +27,21 @@ namespace memoryPool {
         void allocateNewBlock();                                     //申请一块新空间
         size_t padPointer(char* p,size_t align);                          //对齐内存
 
+        ///使用CAS操作进行无锁入队和出队
+        bool pushFreeList(Slot* slot);                                       ///入队
+        Slot* popFreeList();                                                 ///出队
+
     private:
         int BlockSize_;                                                  //内存块大小
         int SlotSize_;                                                      //槽大小
         Slot* firstBlock_;                                       //指向内存池管理的首个
         Slot* curSlot_;                                          //指向当前未被使用的槽
-        Slot* freeList_;                                //指向空闲槽（被释放后又未被使用）
+        ///把空闲链表也修改为原子指针
+        std::atomic<Slot*> freeList_;                   //指向空闲槽（被释放后又未被使用）
         Slot* lastSlot_;             //当前内存块最后未被使用的位置（若超过则需申请新的内存块）
-        std::mutex mutexForFreeList_;                            //保护空闲链表的互斥锁
+        ///修改后，已经可以实现无锁逻辑，不再需要保护空闲链表的互斥锁
+        ///std::mutex mutexForFreeList_;                         //保护空闲链表的互斥锁
+        ///因为空闲链表的入队和出队是常用操作，而内存块的分配较少发生，所以可以保留该互斥锁
         std::mutex mutexForBlock_;                               //保护内存申请的互斥锁
     };
 

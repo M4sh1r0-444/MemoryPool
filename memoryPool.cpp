@@ -2,7 +2,9 @@
 #include <cassert>
 namespace memoryPool {
     //构造函数，初始化内存池
-    MemoryPool::MemoryPool(size_t BlockSize) : BlockSize_ (BlockSize){}
+    MemoryPool::MemoryPool(size_t BlockSize)
+    : BlockSize_ (BlockSize), SlotSize_ (0), firstBlock_ (nullptr),
+      curSlot_ (nullptr), freeList_ (nullptr), lastSlot_ (nullptr){}
 
     //析构函数
     //释放一个内存池，即把链表连接的每一块内存块释放
@@ -25,57 +27,41 @@ namespace memoryPool {
         SlotSize_ = size;
         firstBlock_ = nullptr;
         curSlot_ = nullptr;
-        freeList_ = nullptr;
+        freeList_.store(nullptr, std::memory_order_relaxed);
         lastSlot_ = nullptr;
     }
 
     //内存空间分配
     void* MemoryPool::allocate() {
         //优先使用空闲链表中的内存槽
-        if (freeList_ != nullptr) {
-            //开启一个临时作用域，用于控制锁的生命周期
-            {
-                //把原始的mutex包装成一个智能的锁
-                std::lock_guard<std::mutex> lock(mutexForFreeList_);
-                //双重检查，加锁后再次确认空闲链表是否可以使用
-                if (freeList_ != nullptr) {
-                    //当前表头temp，也就是我们需要拿来用的内存
-                    Slot* temp = freeList_;
-                    freeList_ = freeList_->next;
-                    return temp;
-                }
-            }
+        Slot* slot = popFreeList();
+        if (slot != nullptr) {
+            return slot;
         }
 
-        //若空闲链表不可用
-        Slot* temp;
-        //同上，开启一个临时作用域，用于控制锁的生命周期
-        {
-            std::lock_guard<std::mutex> lock(mutexForBlock_);
-            //判断当前内存块还有没有内存槽可以使用
-            if (curSlot_ >= lastSlot_) {
-                //若没有，申请一块新空间
-                allocateNewBlock();
-            }
-
-            temp = curSlot_;
-            //更新内存槽使用情况
-            curSlot_ += SlotSize_ / sizeof(Slot);
+        //若空闲链表不可用，分配新的内存
+        //上锁
+        std::lock_guard<std::mutex> lock(mutexForBlock_);
+        if (curSlot_ >= lastSlot_) {
+            allocateNewBlock();
         }
 
-        return temp;
+        //更新内存槽使用情况
+        Slot* result = curSlot_;
+        curSlot_ = reinterpret_cast<Slot*>(
+            reinterpret_cast<char*>(curSlot_) + SlotSize_
+        );
+        return result;
     }
 
     //内存空间回收
     void MemoryPool::deallocate(void * ptr) {
         //空指针检查
        if (ptr) {
-           std::lock_guard<std::mutex> lock(mutexForFreeList_);
-           //将传进来的指针转换成可以放到空闲链表的Slot*类型，并将其插入空闲链表头部
-           reinterpret_cast<Slot*>(ptr)->next = freeList_;
-           //更新空闲链表头指针
-           freeList_ = reinterpret_cast<Slot*>(ptr);
+           return;
        }
+        Slot* slot = static_cast<Slot*>(ptr);
+        pushFreeList(slot);
     }
 
     //申请新的内存块
